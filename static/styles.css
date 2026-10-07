@@ -378,3 +378,57 @@ textarea {
     border-color: #ffcdd2;
     color: var(--danger);
 }
+
+/* Database Log Table */
+.table-responsive {
+    overflow-x: auto;
+    margin-top: 15px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+}
+
+.log-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    text-align: left;
+    background: #ffffff;
+}
+
+.log-table th, .log-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+.log-table th {
+    background: #faf8f5;
+    color: var(--dark);
+    font-weight: 700;
+}
+
+.log-table tr:last-child td {
+    border-bottom: none;
+}
+
+.log-table tr:hover {
+    background: #fdfaf7;
+}
+
+.delete-row-btn {
+    background: #fff0f0;
+    border: 1px solid #ffd1d1;
+    color: var(--danger);
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.delete-row-btn:hover {
+    background: var(--danger);
+    color: white;
+    border-color: var(--danger);
+}

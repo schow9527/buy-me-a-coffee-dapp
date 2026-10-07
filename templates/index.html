@@ -115,7 +115,12 @@
                     <div class="record-item">
                         <div class="record-top">
                             <span class="record-author">☕ {{ r[4] }}</span>
-                            <span class="record-badge">+{{ r[3] }} ETH</span>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <span class="record-badge">+{{ r[3] }} ETH</span>
+                                <form action="/deleteRecord/{{ r[0] }}" method="post" onsubmit="return confirm('Delete transaction #{{ r[0] }}?');" style="margin: 0;">
+                                    <button type="submit" class="delete-row-btn" style="padding: 3px 8px; font-size: 11px;" title="Delete this transaction">🗑️</button>
+                                </form>
+                            </div>
                         </div>
                         <div class="record-msg">{{ r[5] }}</div>
                         <div class="record-meta">
@@ -129,14 +134,69 @@
                     </div>
                     {% endfor %}
                 </div>
-
-                <form class="clear-form" action="/deleteRecords" method="post" onsubmit="return confirm('Are you sure you want to clear all transfer logs?');">
-                    <button type="submit" class="clear-btn">🗑️ Clear Transfer Logs</button>
-                </form>
                 {% else %}
                 <div class="empty-state">
                     <div class="empty-icon">☕</div>
                     <p>No coffee sent yet. Be the first supporter!</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Database Log Module -->
+            <div class="card" id="database-log-section">
+                <h2 class="card-title"><span>🗄️</span> Database Log</h2>
+
+                {% if records %}
+                <div class="table-responsive">
+                    <table class="log-table">
+                        <thead>
+                            <tr>
+                                <th>#ID</th>
+                                <th>Timestamp</th>
+                                <th>Supporter</th>
+                                <th>Amount</th>
+                                <th>From (Sender)</th>
+                                <th>To (Recipient)</th>
+                                <th>Message</th>
+                                <th>Tx Hash</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in records %}
+                            <tr>
+                                <td><strong>#{{ r[0] }}</strong></td>
+                                <td>{{ r[7] }}</td>
+                                <td>☕ {{ r[4] }}</td>
+                                <td><span class="record-badge">+{{ r[3] }} ETH</span></td>
+                                <td title="{{ r[1] }}">{{ r[1][:6] }}...{{ r[1][-4:] }}</td>
+                                <td title="{{ r[2] }}">{{ r[2][:6] }}...{{ r[2][-4:] }}</td>
+                                <td style="max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ r[5] }}">{{ r[5] }}</td>
+                                <td>
+                                    {% if r[6] %}
+                                    <a href="https://sepolia.etherscan.io/tx/{{ r[6] }}" target="_blank" class="meta-link">{{ r[6][:8] }}...</a>
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <form action="/deleteRecord/{{ r[0] }}" method="post" onsubmit="return confirm('Are you sure you want to delete transaction #{{ r[0] }}?');" style="margin: 0;">
+                                        <button type="submit" class="delete-row-btn">🗑️ Delete</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <form class="clear-form" action="/deleteRecords" method="post" onsubmit="return confirm('Are you sure you want to clear all database logs?');">
+                    <button type="submit" class="clear-btn">🗑️ Clear All Database Logs</button>
+                </form>
+                {% else %}
+                <div class="empty-state">
+                    <div class="empty-icon">🗄️</div>
+                    <p>No transaction logs in SQLite database yet.</p>
                 </div>
                 {% endif %}
             </div>

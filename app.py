@@ -94,6 +94,30 @@ def record_transfer():
     return jsonify({"status": "success", "id": record_id, "message": "Transfer recorded successfully"})
 
 
+@app.route("/deleteRecord/<int:record_id>", methods=["POST"])
+def delete_single_record(record_id):
+    """删除单条指定的转账记录"""
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("DELETE FROM transfers WHERE id = ?", (record_id,))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("index"))
+
+
+@app.route("/deleteRecord", methods=["POST"])
+def delete_record_form():
+    """兼容表单提交单条删除"""
+    record_id = request.form.get("record_id")
+    if record_id:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("DELETE FROM transfers WHERE id = ?", (record_id,))
+        conn.commit()
+        conn.close()
+    return redirect(url_for("index"))
+
+
 @app.route("/deleteRecords", methods=["POST"])
 def delete_records():
     """清空所有转账记录"""
