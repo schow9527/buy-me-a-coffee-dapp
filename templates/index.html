@@ -222,28 +222,28 @@
         }
 
         async function sendCoffee() {
-            if (!currentAccount) {
-                updateStatus("Please connect your MetaMask wallet first!", "error");
-                await connectWallet();
-                if (!currentAccount) return;
-            }
-
-            const amount = parseFloat(document.getElementById("amount").value);
-            const recipient = document.getElementById("recipient").value.trim();
-            const name = document.getElementById("supporterName").value.trim() || "Anonymous";
-            const message = document.getElementById("message").value.trim() || "Enjoy your coffee! ☕";
-
-            if (!amount || amount <= 0) {
-                updateStatus("Please enter a valid ETH amount", "error");
-                return;
-            }
-
             const sendBtn = document.getElementById("sendBtn");
-            sendBtn.disabled = true;
-            sendBtn.innerText = "⏳ Confirming in Wallet...";
-            updateStatus("Please approve the transaction in your MetaMask wallet...", "info");
-
             try {
+                if (!currentAccount) {
+                    updateStatus("Please connect your MetaMask wallet first!", "error");
+                    await connectWallet();
+                    if (!currentAccount) return;
+                }
+
+                const amountVal = document.getElementById("amount").value;
+                const amount = parseFloat(amountVal);
+                const name = document.getElementById("supporterName").value.trim() || "Anonymous";
+                const message = document.getElementById("message").value.trim() || "Enjoy your coffee! ☕";
+
+                if (!amount || isNaN(amount) || amount <= 0) {
+                    updateStatus("Please enter a valid ETH amount", "error");
+                    return;
+                }
+
+                sendBtn.disabled = true;
+                sendBtn.innerText = "⏳ Confirming in Wallet...";
+                updateStatus("Please approve the transaction in your MetaMask wallet...", "info");
+
                 const weiAmount = web3.utils.toWei(amount.toString(), 'ether');
                 updateStatus("Calling BuyMeACoffee smart contract buyCoffee()...", "info");
 
