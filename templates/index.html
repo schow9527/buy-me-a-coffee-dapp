@@ -77,27 +77,22 @@
                     <textarea id="message" placeholder="Leave a sweet message for the creator...">Enjoy your coffee! Keep up the great work! ☕</textarea>
                 </div>
 
-                <div class="form-group">
-                    <label for="recipient">Recipient / Creator Address</label>
-                    <input type="text" id="recipient" value="{{ default_recipient }}" placeholder="0x...">
-                </div>
-
-                <div class="form-group">
-                    <label for="contractAddress">Smart Contract Address (Optional)</label>
-                    <input type="text" id="contractAddress" placeholder="0x... (Leave empty to use Native ETH transfer)">
+                <div class="contract-badge" style="font-size: 13px; color: var(--text-muted); margin: 15px 0 20px 0; background: #fbf5ef; padding: 12px 16px; border-radius: 10px; border: 1.5px solid var(--border);">
+                    <span>📍 <strong>Sepolia Smart Contract:</strong></span>
+                    <a href="https://sepolia.etherscan.io/address/{{ contract_address }}" target="_blank" style="color: var(--primary); font-family: monospace; display: block; margin-top: 4px; word-break: break-all;">{{ contract_address }}</a>
                 </div>
 
                 <button id="sendBtn" class="submit-btn" onclick="sendCoffee()">
-                    ☕ Send Coffee (Transfer ETH)
+                    ☕ Buy Coffee (Call Smart Contract)
                 </button>
 
-                <button id="viewContractBtn" class="clear-btn" style="width: 100%; margin-top: 10px; padding: 12px; font-weight: 600;" onclick="viewLastOnChainMemo()">
-                    🔍 View Last On-Chain Memo (Smart Contract)
+                <button id="viewContractBtn" class="clear-btn" style="width: 100%; margin-top: 12px; padding: 12px; font-weight: 600;" onclick="viewLastOnChainMemo()">
+                    🔍 View Last On-Chain Memo
                 </button>
 
                 <!-- Status alert -->
                 <div id="statusBox" class="status-msg"></div>
-                <div id="onChainResultBox" class="status-msg" style="word-break: break-all;"></div>
+                <div id="onChainResultBox" class="status-msg" style="white-space: pre-line; word-break: break-all;"></div>
             </div>
 
             <!-- Supporters Wall -->
@@ -138,6 +133,7 @@
     </div>
 
     <script>
+        const contractAddress = "{{ contract_address }}";
         let web3;
         let currentAccount = null;
 
@@ -240,12 +236,6 @@
                 return;
             }
 
-            if (!recipient || !web3.utils.isAddress(recipient)) {
-                updateStatus("Please provide a valid recipient EVM address", "error");
-                return;
-            }
-
-            const contractAddressInput = document.getElementById("contractAddress").value.trim();
             const sendBtn = document.getElementById("sendBtn");
             sendBtn.disabled = true;
             sendBtn.innerText = "⏳ Confirming in Wallet...";
@@ -253,37 +243,16 @@
 
             try {
                 const weiAmount = web3.utils.toWei(amount.toString(), 'ether');
-                let txHash = "";
+                updateStatus("Calling BuyMeACoffee smart contract buyCoffee()...", "info");
 
-                if (contractAddressInput && web3.utils.isAddress(contractAddressInput)) {
-                    // Smart Contract mode
-                    updateStatus("Calling BuyMeACoffee smart contract buyCoffee()...", "info");
-                    const contract = new web3.eth.Contract(contractABI, contractAddressInput);
-                    const res = await contract.methods.buyCoffee(name, message).send({
-                        from: currentAccount,
-                        value: weiAmount
-                    });
-                    txHash = res.transactionHash;
-                } else {
-                    // Native ETH transfer mode
-                    if (!recipient || !web3.utils.isAddress(recipient)) {
-                        updateStatus("Please provide a valid recipient EVM address", "error");
-                        sendBtn.disabled = false;
-                        sendBtn.innerText = "☕ Send Coffee (Transfer ETH)";
-                        return;
-                    }
-                    const txParams = {
-                        from: currentAccount,
-                        to: recipient,
-                        value: web3.utils.toHex(weiAmount)
-                    };
-                    txHash = await window.ethereum.request({
-                        method: 'eth_sendTransaction',
-                        params: [txParams]
-                    });
-                }
+                const contract = new web3.eth.Contract(contractABI, contractAddress);
+                const res = await contract.methods.buyCoffee(name, message).send({
+                    from: currentAccount,
+                    value: weiAmount
+                });
+                const txHash = res.transactionHash;
 
-                updateStatus("🎉 Transaction sent! Hash: " + txHash + ". Saving to database...", "info");
+                updateStatus("🎉 Contract call confirmed! Hash: " + txHash + ". Saving to database...", "info");
 
                 // Record transfer into SQLite
                 const response = await fetch("/api/transfer", {
@@ -291,7 +260,7 @@
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         sender: currentAccount,
-                        recipient: recipient,
+                        recipient: contractAddress,
                         amount: amount,
                         name: name,
                         message: message,
@@ -301,38 +270,37 @@
 
                 const resData = await response.json();
                 if (resData.status === "success") {
-                    updateStatus("☕ Coffee sent successfully! Thank you for supporting! Refreshing wall...", "success");
+                    updateStatus("☕ Coffee sent successfully to smart contract! Refreshing wall...", "success");
                     setTimeout(() => {
                         window.location.reload();
                     }, 1500);
                 } else {
-                    updateStatus("Transfer sent on chain, but failed to record: " + resData.message, "error");
+                    updateStatus("Smart contract transaction succeeded, but failed to record in DB: " + resData.message, "error");
                     sendBtn.disabled = false;
-                    sendBtn.innerText = "☕ Send Coffee (Transfer ETH)";
+                    sendBtn.innerText = "☕ Buy Coffee (Call Smart Contract)";
                 }
 
             } catch (err) {
                 console.error(err);
                 updateStatus("Transaction cancelled or failed: " + (err.message || err), "error");
                 sendBtn.disabled = false;
-                sendBtn.innerText = "☕ Send Coffee (Transfer ETH)";
+                sendBtn.innerText = "☕ Buy Coffee (Call Smart Contract)";
             }
         }
 
         async function viewLastOnChainMemo() {
-            const contractAddressInput = document.getElementById("contractAddress").value.trim();
             const resultBox = document.getElementById("onChainResultBox");
-            if (!contractAddressInput || !web3.utils.isAddress(contractAddressInput)) {
-                resultBox.className = "status-msg error";
-                resultBox.innerText = "Please enter a valid Smart Contract Address first!";
-                return;
-            }
             try {
-                const contract = new web3.eth.Contract(contractABI, contractAddressInput);
+                const contract = new web3.eth.Contract(contractABI, contractAddress);
                 const res = await contract.methods.getLastMemo().call();
+                if (res[0] === "0x0000000000000000000000000000000000000000") {
+                    resultBox.className = "status-msg info";
+                    resultBox.innerText = "[On-Chain Status]\nNo memos recorded on contract yet. Buy the first coffee!";
+                    return;
+                }
                 const ethAmount = web3.utils.fromWei(res[3].toString(), 'ether');
                 resultBox.className = "status-msg success";
-                resultBox.innerText = `[On-Chain Memo]\nFrom: ${res[0]}\nName: ${res[1]}\nMessage: ${res[2]}\nAmount: ${ethAmount} ETH`;
+                resultBox.innerText = `[Latest On-Chain Memo from Contract]\n👤 Supporter: ${res[1]}\n💬 Message: "${res[2]}"\n💰 Amount: ${ethAmount} ETH\n📬 From: ${res[0]}`;
             } catch (e) {
                 console.error(e);
                 resultBox.className = "status-msg error";

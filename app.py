@@ -5,8 +5,8 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for
 app = Flask(__name__)
 DB_NAME = "coffee.db"
 
-# 默认创作者收款钱包地址（可在前端修改或作为默认收款方）
-DEFAULT_RECIPIENT = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
+# 部署在 Sepolia 上的智能合约地址
+CONTRACT_ADDRESS = "0xd5f75d250210720bA437a144539a82E7eAD65FE2"
 
 
 def init_db():
@@ -49,7 +49,7 @@ def index():
         records=records,
         total_coffee=total_coffee,
         total_eth=total_eth,
-        default_recipient=DEFAULT_RECIPIENT,
+        contract_address=CONTRACT_ADDRESS,
     )
 
 
@@ -59,7 +59,7 @@ def record_transfer():
     data = request.get_json(silent=True) or request.form
 
     sender = data.get("sender", "").strip()
-    recipient = data.get("recipient", DEFAULT_RECIPIENT).strip()
+    recipient = data.get("recipient", CONTRACT_ADDRESS).strip()
     amount = data.get("amount", 0)
     name = data.get("name", "Anonymous").strip() or "Anonymous"
     message = data.get("message", "Enjoy your coffee! ☕").strip() or "Enjoy your coffee! ☕"
