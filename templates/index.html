@@ -223,7 +223,25 @@
                 return;
             }
             try {
-                const accounts = await provider.request({ method: 'eth_requestAccounts' });
+                let accounts = [];
+                // Force MetaMask to pop up the account selection window (EIP-2255)
+                try {
+                    const permissions = await provider.request({
+                        method: 'wallet_requestPermissions',
+                        params: [{ eth_accounts: {} }]
+                    });
+                    const accountsPermission = permissions.find(p => p.parentCapability === 'eth_accounts');
+                    if (accountsPermission && accountsPermission.caveats && accountsPermission.caveats[0]) {
+                        accounts = accountsPermission.caveats[0].value;
+                    }
+                } catch (permErr) {
+                    console.log("wallet_requestPermissions cancelled or unsupported:", permErr);
+                }
+
+                if (!accounts || accounts.length === 0) {
+                    accounts = await provider.request({ method: 'eth_requestAccounts' });
+                }
+
                 if (accounts && accounts.length > 0) {
                     handleAccountConnected(accounts[0]);
                     await ensureSepoliaNetwork();
@@ -238,21 +256,40 @@
             const provider = getMetaMaskProvider();
             if (provider) {
                 try {
-                    await provider.request({
+                    const permissions = await provider.request({
                         method: 'wallet_requestPermissions',
                         params: [{ eth_accounts: {} }]
                     });
+                    const accountsPermission = permissions.find(p => p.parentCapability === 'eth_accounts');
+                    if (accountsPermission && accountsPermission.caveats && accountsPermission.caveats[0]) {
+                        const accs = accountsPermission.caveats[0].value;
+                        if (accs && accs.length > 0) {
+                            handleAccountConnected(accs[0]);
+                        }
+                    }
                 } catch (e) {
                     console.error(e);
                 }
             }
         }
 
-        function disconnectWallet() {
+        async function disconnectWallet() {
+            const provider = getMetaMaskProvider();
+            if (provider) {
+                try {
+                    // Revoke site permission inside MetaMask extension
+                    await provider.request({
+                        method: 'wallet_revokePermissions',
+                        params: [{ eth_accounts: {} }]
+                    });
+                } catch (e) {
+                    console.log("wallet_revokePermissions not supported or ignored:", e);
+                }
+            }
             currentAccount = null;
             localStorage.setItem("metamask_connected", "false");
             handleAccountDisconnected();
-            updateStatus("MetaMask disconnected. Refreshing will NOT reconnect automatically.", "info");
+            updateStatus("MetaMask disconnected. Permissions revoked.", "info");
         }
 
         function handleAccountConnected(account) {
