@@ -15,7 +15,7 @@
                 <div class="brand-icon">☕</div>
                 <div>
                     <h1 class="brand-title">Buy Me a Coffee DApp</h1>
-                    <p class="brand-subtitle">Decentralized Tipping & Message Wall on EVM</p>
+                    <p class="brand-subtitle">Decentralized Tipping & Message Wall on Sepolia Testnet</p>
                 </div>
             </div>
             <div class="wallet-actions" style="display: flex; gap: 10px; align-items: center;">
@@ -28,6 +28,11 @@
             </div>
         </header>
 
+        <!-- Network Warning Banner -->
+        <div id="networkAlert" class="status-msg error" style="display: none; margin-bottom: 20px; text-align: center; cursor: pointer; padding: 14px;" onclick="ensureSepoliaNetwork()">
+            ⚠️ <strong>Wrong Network!</strong> You are not on Sepolia Testnet. <u>Click here to switch MetaMask to Sepolia</u>.
+        </div>
+
         <!-- Stats -->
         <div class="stats-row">
             <div class="stat-card">
@@ -38,9 +43,9 @@
                 <div class="stat-value">{{ total_eth }} ETH</div>
                 <div class="stat-label">Total Volume Supported</div>
             </div>
-            <div class="stat-card">
-                <div class="stat-value" id="currentNetwork">EVM Network</div>
-                <div class="stat-label">Network Status</div>
+            <div class="stat-card" style="cursor: pointer;" onclick="ensureSepoliaNetwork()" title="Click to switch/verify Sepolia network">
+                <div class="stat-value" id="currentNetwork" style="font-size: 20px;">Sepolia Testnet</div>
+                <div class="stat-label">Network (Click to Switch)</div>
             </div>
         </div>
 
@@ -141,6 +146,8 @@
     <script>
         const contractAddress = "{{ contract_address }}";
         const recipientAddress = "{{ recipient_address }}";
+        const SEPOLIA_CHAIN_ID_HEX = "0xaa36a7";
+        const SEPOLIA_CHAIN_ID_DEC = 11155111;
         let web3;
         let currentAccount = null;
 
@@ -219,6 +226,7 @@
                 const accounts = await provider.request({ method: 'eth_requestAccounts' });
                 if (accounts && accounts.length > 0) {
                     handleAccountConnected(accounts[0]);
+                    await ensureSepoliaNetwork();
                 }
             } catch (err) {
                 console.error(err);
@@ -277,18 +285,75 @@
         async function updateNetwork() {
             try {
                 const chainId = await web3.eth.getChainId();
-                const networkNames = {
-                    1: "Ethereum Mainnet",
-                    11155111: "Sepolia Testnet",
-                    17000: "Holesky Testnet",
-                    137: "Polygon Mainnet",
-                    80002: "Polygon Amoy",
-                    1337: "Localhost",
-                    31337: "Hardhat"
-                };
-                document.getElementById("currentNetwork").innerText = networkNames[chainId] || ("Chain ID " + chainId);
+                const netEl = document.getElementById("currentNetwork");
+                const alertEl = document.getElementById("networkAlert");
+                if (chainId === SEPOLIA_CHAIN_ID_DEC) {
+                    netEl.innerHTML = "<span style='color: #2e7d32; font-weight: 700;'>🟢 Sepolia</span>";
+                    if (alertEl) alertEl.style.display = "none";
+                } else {
+                    const networkNames = {
+                        1: "Ethereum Mainnet",
+                        17000: "Holesky",
+                        137: "Polygon",
+                        80002: "Amoy",
+                        1337: "Localhost",
+                        31337: "Hardhat"
+                    };
+                    const name = networkNames[chainId] || ("Chain " + chainId);
+                    netEl.innerHTML = `<span style='color: #c62828; font-weight: 700;'>🔴 ${name}</span>`;
+                    if (alertEl) {
+                        alertEl.style.display = "block";
+                        alertEl.innerHTML = `⚠️ <strong>Wrong Network (${name})!</strong> This DApp runs exclusively on Sepolia Testnet. <u>Click here to switch to Sepolia</u>.`;
+                    }
+                }
             } catch (e) {
                 console.error(e);
+            }
+        }
+
+        async function ensureSepoliaNetwork() {
+            const provider = getMetaMaskProvider();
+            if (!provider) {
+                alert("未检测到 MetaMask 插件！请确认已安装并启用 MetaMask 浏览器扩展。");
+                return false;
+            }
+            try {
+                const currentChainId = await provider.request({ method: 'eth_chainId' });
+                if (parseInt(currentChainId, 16) === SEPOLIA_CHAIN_ID_DEC) {
+                    return true;
+                }
+                updateStatus("Requesting MetaMask to switch to Sepolia Testnet...", "info");
+                try {
+                    await provider.request({
+                        method: 'wallet_switchEthereumChain',
+                        params: [{ chainId: SEPOLIA_CHAIN_ID_HEX }]
+                    });
+                    await updateNetwork();
+                    updateStatus("Switched to Sepolia Testnet successfully!", "success");
+                    return true;
+                } catch (switchError) {
+                    // Chain not added (error 4902)
+                    if (switchError.code === 4902) {
+                        await provider.request({
+                            method: 'wallet_addEthereumChain',
+                            params: [{
+                                chainId: SEPOLIA_CHAIN_ID_HEX,
+                                chainName: 'Sepolia Testnet',
+                                nativeCurrency: { name: 'Sepolia ETH', symbol: 'ETH', decimals: 18 },
+                                rpcUrls: ['https://rpc.sepolia.org', 'https://ethereum-sepolia-rpc.publicnode.com'],
+                                blockExplorerUrls: ['https://sepolia.etherscan.io']
+                            }]
+                        });
+                        await updateNetwork();
+                        return true;
+                    } else {
+                        throw switchError;
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to switch to Sepolia:", err);
+                updateStatus("Please switch network to Sepolia in MetaMask: " + (err.message || err), "error");
+                return false;
             }
         }
 
@@ -308,6 +373,12 @@
                     return;
                 }
                 web3 = new Web3(provider);
+
+                // Strictly ensure Sepolia network before continuing
+                const isSepolia = await ensureSepoliaNetwork();
+                if (!isSepolia) {
+                    return;
+                }
 
                 if (!currentAccount) {
                     updateStatus("Please connect your MetaMask wallet first!", "error");
@@ -378,6 +449,13 @@
         async function viewLastOnChainMemo() {
             const resultBox = document.getElementById("onChainResultBox");
             try {
+                const provider = getMetaMaskProvider();
+                if (provider) {
+                    web3 = new Web3(provider);
+                }
+                const isSepolia = await ensureSepoliaNetwork();
+                if (!isSepolia) return;
+
                 const contract = new web3.eth.Contract(contractABI, contractAddress);
                 const res = await contract.methods.getLastMemo().call();
                 if (res[0] === "0x0000000000000000000000000000000000000000") {
