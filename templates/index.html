@@ -78,16 +78,26 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="recipient">Recipient Wallet Address (Creator)</label>
+                    <label for="recipient">Recipient / Creator Address</label>
                     <input type="text" id="recipient" value="{{ default_recipient }}" placeholder="0x...">
+                </div>
+
+                <div class="form-group">
+                    <label for="contractAddress">Smart Contract Address (Optional)</label>
+                    <input type="text" id="contractAddress" placeholder="0x... (Leave empty to use Native ETH transfer)">
                 </div>
 
                 <button id="sendBtn" class="submit-btn" onclick="sendCoffee()">
                     ☕ Send Coffee (Transfer ETH)
                 </button>
 
+                <button id="viewContractBtn" class="clear-btn" style="width: 100%; margin-top: 10px; padding: 12px; font-weight: 600;" onclick="viewLastOnChainMemo()">
+                    🔍 View Last On-Chain Memo (Smart Contract)
+                </button>
+
                 <!-- Status alert -->
                 <div id="statusBox" class="status-msg"></div>
+                <div id="onChainResultBox" class="status-msg" style="word-break: break-all;"></div>
             </div>
 
             <!-- Supporters Wall -->
@@ -235,6 +245,7 @@
                 return;
             }
 
+            const contractAddressInput = document.getElementById("contractAddress").value.trim();
             const sendBtn = document.getElementById("sendBtn");
             sendBtn.disabled = true;
             sendBtn.innerText = "⏳ Confirming in Wallet...";
@@ -242,17 +253,35 @@
 
             try {
                 const weiAmount = web3.utils.toWei(amount.toString(), 'ether');
-                const txParams = {
-                    from: currentAccount,
-                    to: recipient,
-                    value: web3.utils.toHex(weiAmount)
-                };
+                let txHash = "";
 
-                // Trigger native blockchain transfer
-                const txHash = await window.ethereum.request({
-                    method: 'eth_sendTransaction',
-                    params: [txParams]
-                });
+                if (contractAddressInput && web3.utils.isAddress(contractAddressInput)) {
+                    // Smart Contract mode
+                    updateStatus("Calling BuyMeACoffee smart contract buyCoffee()...", "info");
+                    const contract = new web3.eth.Contract(contractABI, contractAddressInput);
+                    const res = await contract.methods.buyCoffee(name, message).send({
+                        from: currentAccount,
+                        value: weiAmount
+                    });
+                    txHash = res.transactionHash;
+                } else {
+                    // Native ETH transfer mode
+                    if (!recipient || !web3.utils.isAddress(recipient)) {
+                        updateStatus("Please provide a valid recipient EVM address", "error");
+                        sendBtn.disabled = false;
+                        sendBtn.innerText = "☕ Send Coffee (Transfer ETH)";
+                        return;
+                    }
+                    const txParams = {
+                        from: currentAccount,
+                        to: recipient,
+                        value: web3.utils.toHex(weiAmount)
+                    };
+                    txHash = await window.ethereum.request({
+                        method: 'eth_sendTransaction',
+                        params: [txParams]
+                    });
+                }
 
                 updateStatus("🎉 Transaction sent! Hash: " + txHash + ". Saving to database...", "info");
 
@@ -289,6 +318,94 @@
                 sendBtn.innerText = "☕ Send Coffee (Transfer ETH)";
             }
         }
+
+        async function viewLastOnChainMemo() {
+            const contractAddressInput = document.getElementById("contractAddress").value.trim();
+            const resultBox = document.getElementById("onChainResultBox");
+            if (!contractAddressInput || !web3.utils.isAddress(contractAddressInput)) {
+                resultBox.className = "status-msg error";
+                resultBox.innerText = "Please enter a valid Smart Contract Address first!";
+                return;
+            }
+            try {
+                const contract = new web3.eth.Contract(contractABI, contractAddressInput);
+                const res = await contract.methods.getLastMemo().call();
+                const ethAmount = web3.utils.fromWei(res[3].toString(), 'ether');
+                resultBox.className = "status-msg success";
+                resultBox.innerText = `[On-Chain Memo]\nFrom: ${res[0]}\nName: ${res[1]}\nMessage: ${res[2]}\nAmount: ${ethAmount} ETH`;
+            } catch (e) {
+                console.error(e);
+                resultBox.className = "status-msg error";
+                resultBox.innerText = "Failed to read contract: " + (e.message || e);
+            }
+        }
+
+        const contractABI = [
+            { "inputs": [], "stateMutability": "nonpayable", "type": "constructor" },
+            {
+                "anonymous": false,
+                "inputs": [
+                    { "indexed": true, "internalType": "address", "name": "from", "type": "address" },
+                    { "indexed": false, "internalType": "uint256", "name": "timestamp", "type": "uint256" },
+                    { "indexed": false, "internalType": "string", "name": "name", "type": "string" },
+                    { "indexed": false, "internalType": "string", "name": "message", "type": "string" },
+                    { "indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256" }
+                ],
+                "name": "NewCoffee",
+                "type": "event"
+            },
+            {
+                "inputs": [
+                    { "internalType": "string", "name": "_name", "type": "string" },
+                    { "internalType": "string", "name": "_message", "type": "string" }
+                ],
+                "name": "buyCoffee",
+                "outputs": [],
+                "stateMutability": "payable",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "getLastMemo",
+                "outputs": [
+                    { "internalType": "address", "name": "from", "type": "address" },
+                    { "internalType": "string", "name": "name", "type": "string" },
+                    { "internalType": "string", "name": "message", "type": "string" },
+                    { "internalType": "uint256", "name": "amount", "type": "uint256" }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "getMemos",
+                "outputs": [
+                    {
+                        "components": [
+                            { "internalType": "address", "name": "from", "type": "address" },
+                            { "internalType": "uint256", "name": "timestamp", "type": "uint256" },
+                            { "internalType": "string", "name": "name", "type": "string" },
+                            { "internalType": "string", "name": "message", "type": "string" },
+                            { "internalType": "uint256", "name": "amount", "type": "uint256" }
+                        ],
+                        "internalType": "struct BuyMeACoffee.Memo[]",
+                        "name": "",
+                        "type": "tuple[]"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "owner",
+                "outputs": [
+                    { "internalType": "address payable", "name": "", "type": "address" }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            }
+        ];
 
         function updateStatus(msg, type) {
             const box = document.getElementById("statusBox");
