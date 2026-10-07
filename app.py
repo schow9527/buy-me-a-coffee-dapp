@@ -7,6 +7,8 @@ DB_NAME = "coffee.db"
 
 # 部署在 Sepolia 上的智能合约地址
 CONTRACT_ADDRESS = "0xd5f75d250210720bA437a144539a82E7eAD65FE2"
+# 创作者收款人钱包地址
+RECIPIENT_ADDRESS = "0xD332d77BA77e4c793D92Ece36e2D28905E622cA7"
 
 
 def init_db():
@@ -50,6 +52,7 @@ def index():
         total_coffee=total_coffee,
         total_eth=total_eth,
         contract_address=CONTRACT_ADDRESS,
+        recipient_address=RECIPIENT_ADDRESS,
     )
 
 
@@ -59,7 +62,7 @@ def record_transfer():
     data = request.get_json(silent=True) or request.form
 
     sender = data.get("sender", "").strip()
-    recipient = data.get("recipient", CONTRACT_ADDRESS).strip()
+    recipient = data.get("recipient", RECIPIENT_ADDRESS).strip()
     amount = data.get("amount", 0)
     name = data.get("name", "Anonymous").strip() or "Anonymous"
     message = data.get("message", "Enjoy your coffee! ☕").strip() or "Enjoy your coffee! ☕"
