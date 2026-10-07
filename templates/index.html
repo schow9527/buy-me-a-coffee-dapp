@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>☕ Buy Me a Coffee - Web3 DApp</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.5.2/dist/web3.min.js"></script>
+</head>
+<body>
+    <div class="dapp-container">
+        <!-- Header -->
+        <header class="dapp-header">
+            <div class="brand">
+                <div class="brand-icon">☕</div>
+                <div>
+                    <h1 class="brand-title">Buy Me a Coffee DApp</h1>
+                    <p class="brand-subtitle">Decentralized Tipping & Message Wall on EVM</p>
+                </div>
+            </div>
+            <button id="connectWalletBtn" class="wallet-btn" onclick="connectWallet()">
+                <span>🦊 Connect Wallet</span>
+            </button>
+        </header>
+
+        <!-- Stats -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-value">{{ total_coffee }}</div>
+                <div class="stat-label">Total Coffees Bought</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ total_eth }} ETH</div>
+                <div class="stat-label">Total Volume Supported</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="currentNetwork">EVM Network</div>
+                <div class="stat-label">Network Status</div>
+            </div>
+        </div>
+
+        <div class="main-grid">
+            <!-- Tipping Card -->
+            <div class="card">
+                <h2 class="card-title"><span>💖</span> Support Creator with a Coffee</h2>
+
+                <!-- Presets -->
+                <label>Choose amount</label>
+                <div class="presets-grid">
+                    <div class="preset-btn active" onclick="selectPreset(0.001, this)">
+                        <div class="preset-amount">0.001 ETH</div>
+                        <div class="preset-desc">☕ Espresso</div>
+                    </div>
+                    <div class="preset-btn" onclick="selectPreset(0.003, this)">
+                        <div class="preset-amount">0.003 ETH</div>
+                        <div class="preset-desc">🥛 Flat White</div>
+                    </div>
+                    <div class="preset-btn" onclick="selectPreset(0.005, this)">
+                        <div class="preset-amount">0.005 ETH</div>
+                        <div class="preset-desc">🍰 Coffee & Cake</div>
+                    </div>
+                </div>
+
+                <!-- Form -->
+                <div class="form-group">
+                    <label for="amount">Custom Amount (ETH)</label>
+                    <input type="number" id="amount" step="0.0001" min="0.0001" value="0.001" placeholder="Amount in ETH">
+                </div>
+
+                <div class="form-group">
+                    <label for="supporterName">Your Name / Nickname</label>
+                    <input type="text" id="supporterName" placeholder="e.g. Satoshi or Alice">
+                </div>
+
+                <div class="form-group">
+                    <label for="message">Your Message</label>
+                    <textarea id="message" placeholder="Leave a sweet message for the creator...">Enjoy your coffee! Keep up the great work! ☕</textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="recipient">Recipient Wallet Address (Creator)</label>
+                    <input type="text" id="recipient" value="{{ default_recipient }}" placeholder="0x...">
+                </div>
+
+                <button id="sendBtn" class="submit-btn" onclick="sendCoffee()">
+                    ☕ Send Coffee (Transfer ETH)
+                </button>
+
+                <!-- Status alert -->
+                <div id="statusBox" class="status-msg"></div>
+            </div>
+
+            <!-- Supporters Wall -->
+            <div class="card">
+                <h2 class="card-title"><span>📜</span> Recent Supporters Wall ({{ records|length }})</h2>
+
+                {% if records %}
+                <div class="records-list">
+                    {% for r in records %}
+                    <div class="record-item">
+                        <div class="record-top">
+                            <span class="record-author">☕ {{ r[4] }}</span>
+                            <span class="record-badge">+{{ r[3] }} ETH</span>
+                        </div>
+                        <div class="record-msg">{{ r[5] }}</div>
+                        <div class="record-meta">
+                            <span>From: {{ r[1][:6] }}...{{ r[1][-4:] }}</span>
+                            <span>Time: {{ r[7] }}</span>
+                            {% if r[6] %}
+                            <span>Tx: <a href="https://sepolia.etherscan.io/tx/{{ r[6] }}" target="_blank" class="meta-link">{{ r[6][:10] }}...</a></span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <form class="clear-form" action="/deleteRecords" method="post" onsubmit="return confirm('Are you sure you want to clear all transfer logs?');">
+                    <button type="submit" class="clear-btn">🗑️ Clear Transfer Logs</button>
+                </form>
+                {% else %}
+                <div class="empty-state">
+                    <div class="empty-icon">☕</div>
+                    <p>No coffee sent yet. Be the first supporter!</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let web3;
+        let currentAccount = null;
+
+        // Initialize Web3
+        window.addEventListener('load', async () => {
+            if (window.ethereum) {
+                web3 = new Web3(window.ethereum);
+                // Check if already connected
+                const accounts = await web3.eth.getAccounts();
+                if (accounts.length > 0) {
+                    handleAccountConnected(accounts[0]);
+                }
+                updateNetwork();
+
+                window.ethereum.on('accountsChanged', (accs) => {
+                    if (accs.length > 0) {
+                        handleAccountConnected(accs[0]);
+                    } else {
+                        handleAccountDisconnected();
+                    }
+                });
+
+                window.ethereum.on('chainChanged', () => {
+                    window.location.reload();
+                });
+            } else {
+                updateStatus("Please install MetaMask to interact with the blockchain.", "info");
+            }
+        });
+
+        async function connectWallet() {
+            if (!window.ethereum) {
+                alert("MetaMask is not installed. Please install MetaMask from https://metamask.io");
+                return;
+            }
+            try {
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                handleAccountConnected(accounts[0]);
+            } catch (err) {
+                console.error(err);
+                updateStatus("Wallet connection rejected: " + err.message, "error");
+            }
+        }
+
+        function handleAccountConnected(account) {
+            currentAccount = account;
+            const shortAcc = account.substring(0, 6) + "..." + account.substring(account.length - 4);
+            const btn = document.getElementById("connectWalletBtn");
+            btn.innerHTML = "<span>🟢 " + shortAcc + "</span>";
+            btn.classList.add("connected");
+            updateStatus("Wallet connected: " + shortAcc, "success");
+        }
+
+        function handleAccountDisconnected() {
+            currentAccount = null;
+            const btn = document.getElementById("connectWalletBtn");
+            btn.innerHTML = "<span>🦊 Connect Wallet</span>";
+            btn.classList.remove("connected");
+            updateStatus("Wallet disconnected", "info");
+        }
+
+        async function updateNetwork() {
+            try {
+                const chainId = await web3.eth.getChainId();
+                const networkNames = {
+                    1: "Ethereum Mainnet",
+                    11155111: "Sepolia Testnet",
+                    17000: "Holesky Testnet",
+                    137: "Polygon Mainnet",
+                    80002: "Polygon Amoy",
+                    1337: "Localhost",
+                    31337: "Hardhat"
+                };
+                document.getElementById("currentNetwork").innerText = networkNames[chainId] || ("Chain ID " + chainId);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function selectPreset(val, element) {
+            document.getElementById("amount").value = val;
+            document.querySelectorAll(".preset-btn").forEach(el => el.classList.remove("active"));
+            element.classList.add("active");
+        }
+
+        async function sendCoffee() {
+            if (!currentAccount) {
+                updateStatus("Please connect your MetaMask wallet first!", "error");
+                await connectWallet();
+                if (!currentAccount) return;
+            }
+
+            const amount = parseFloat(document.getElementById("amount").value);
+            const recipient = document.getElementById("recipient").value.trim();
+            const name = document.getElementById("supporterName").value.trim() || "Anonymous";
+            const message = document.getElementById("message").value.trim() || "Enjoy your coffee! ☕";
+
+            if (!amount || amount <= 0) {
+                updateStatus("Please enter a valid ETH amount", "error");
+                return;
+            }
+
+            if (!recipient || !web3.utils.isAddress(recipient)) {
+                updateStatus("Please provide a valid recipient EVM address", "error");
+                return;
+            }
+
+            const sendBtn = document.getElementById("sendBtn");
+            sendBtn.disabled = true;
+            sendBtn.innerText = "⏳ Confirming in Wallet...";
+            updateStatus("Please approve the transaction in your MetaMask wallet...", "info");
+
+            try {
+                const weiAmount = web3.utils.toWei(amount.toString(), 'ether');
+                const txParams = {
+                    from: currentAccount,
+                    to: recipient,
+                    value: web3.utils.toHex(weiAmount)
+                };
+
+                // Trigger native blockchain transfer
+                const txHash = await window.ethereum.request({
+                    method: 'eth_sendTransaction',
+                    params: [txParams]
+                });
+
+                updateStatus("🎉 Transaction sent! Hash: " + txHash + ". Saving to database...", "info");
+
+                // Record transfer into SQLite
+                const response = await fetch("/api/transfer", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        sender: currentAccount,
+                        recipient: recipient,
+                        amount: amount,
+                        name: name,
+                        message: message,
+                        tx_hash: txHash
+                    })
+                });
+
+                const resData = await response.json();
+                if (resData.status === "success") {
+                    updateStatus("☕ Coffee sent successfully! Thank you for supporting! Refreshing wall...", "success");
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    updateStatus("Transfer sent on chain, but failed to record: " + resData.message, "error");
+                    sendBtn.disabled = false;
+                    sendBtn.innerText = "☕ Send Coffee (Transfer ETH)";
+                }
+
+            } catch (err) {
+                console.error(err);
+                updateStatus("Transaction cancelled or failed: " + (err.message || err), "error");
+                sendBtn.disabled = false;
+                sendBtn.innerText = "☕ Send Coffee (Transfer ETH)";
+            }
+        }
+
+        function updateStatus(msg, type) {
+            const box = document.getElementById("statusBox");
+            box.className = "status-msg " + type;
+            box.innerText = msg;
+        }
+    </script>
+</body>
+</html>
