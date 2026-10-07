@@ -18,9 +18,14 @@
                     <p class="brand-subtitle">Decentralized Tipping & Message Wall on EVM</p>
                 </div>
             </div>
-            <button id="connectWalletBtn" class="wallet-btn" onclick="connectWallet()">
-                <span>🦊 Connect Wallet</span>
-            </button>
+            <div class="wallet-actions" style="display: flex; gap: 10px; align-items: center;">
+                <button id="connectWalletBtn" class="wallet-btn" onclick="handleConnectBtnClick()">
+                    <span>🦊 Connect MetaMask</span>
+                </button>
+                <button id="disconnectWalletBtn" class="clear-btn" style="display: none; padding: 10px 16px; border-radius: 50px; font-size: 13px; border-color: #e0d7ce;" onclick="disconnectWallet()">
+                    🔌 Disconnect
+                </button>
+            </div>
         </header>
 
         <!-- Stats -->
@@ -139,62 +144,134 @@
         let web3;
         let currentAccount = null;
 
-        // Initialize Web3
-        window.addEventListener('load', async () => {
-            if (window.ethereum) {
-                web3 = new Web3(window.ethereum);
-                // Check if already connected
-                const accounts = await web3.eth.getAccounts();
-                if (accounts.length > 0) {
-                    handleAccountConnected(accounts[0]);
-                }
-                updateNetwork();
+        // Helper to strictly identify and get MetaMask provider
+        function getMetaMaskProvider() {
+            if (!window.ethereum) return null;
+            // Coexistence with other extensions (e.g. Phantom, OKX, Coinbase, etc.)
+            if (window.ethereum.providers && window.ethereum.providers.length > 0) {
+                const mm = window.ethereum.providers.find(p => p.isMetaMask && !p.isPhantom && !p.isOkxWallet && !p.isCoinbaseWallet);
+                if (mm) return mm;
+                return window.ethereum.providers.find(p => p.isMetaMask);
+            }
+            if (window.ethereum.isMetaMask) {
+                return window.ethereum;
+            }
+            return null;
+        }
 
-                window.ethereum.on('accountsChanged', (accs) => {
-                    if (accs.length > 0) {
-                        handleAccountConnected(accs[0]);
+        // Initialize Web3 exclusively with MetaMask
+        window.addEventListener('load', async () => {
+            const provider = getMetaMaskProvider();
+            if (!provider) {
+                updateStatus("MetaMask not detected. Please install and enable MetaMask extension.", "info");
+                return;
+            }
+            web3 = new Web3(provider);
+            updateNetwork();
+
+            // ONLY auto-connect if user DID NOT disconnect previously
+            const wasConnected = localStorage.getItem("metamask_connected") === "true";
+            if (wasConnected) {
+                try {
+                    const accounts = await provider.request({ method: 'eth_accounts' });
+                    if (accounts && accounts.length > 0) {
+                        handleAccountConnected(accounts[0]);
                     } else {
                         handleAccountDisconnected();
                     }
-                });
-
-                window.ethereum.on('chainChanged', () => {
-                    window.location.reload();
-                });
+                } catch (e) {
+                    handleAccountDisconnected();
+                }
             } else {
-                updateStatus("Please install MetaMask to interact with the blockchain.", "info");
+                handleAccountDisconnected();
             }
+
+            provider.on('accountsChanged', (accs) => {
+                if (accs.length > 0 && localStorage.getItem("metamask_connected") === "true") {
+                    handleAccountConnected(accs[0]);
+                } else {
+                    handleAccountDisconnected();
+                }
+            });
+
+            provider.on('chainChanged', () => {
+                window.location.reload();
+            });
         });
 
+        async function handleConnectBtnClick() {
+            if (currentAccount) {
+                // If already connected, click to switch accounts via MetaMask
+                await switchAccount();
+            } else {
+                await connectWallet();
+            }
+        }
+
         async function connectWallet() {
-            if (!window.ethereum) {
-                alert("MetaMask is not installed. Please install MetaMask from https://metamask.io");
+            const provider = getMetaMaskProvider();
+            if (!provider) {
+                alert("未检测到 MetaMask 插件！请确认已安装并启用 MetaMask 浏览器扩展。");
+                updateStatus("MetaMask extension not found.", "error");
                 return;
             }
             try {
-                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-                handleAccountConnected(accounts[0]);
+                const accounts = await provider.request({ method: 'eth_requestAccounts' });
+                if (accounts && accounts.length > 0) {
+                    handleAccountConnected(accounts[0]);
+                }
             } catch (err) {
                 console.error(err);
-                updateStatus("Wallet connection rejected: " + err.message, "error");
+                updateStatus("MetaMask connection rejected: " + err.message, "error");
             }
+        }
+
+        async function switchAccount() {
+            const provider = getMetaMaskProvider();
+            if (provider) {
+                try {
+                    await provider.request({
+                        method: 'wallet_requestPermissions',
+                        params: [{ eth_accounts: {} }]
+                    });
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+        }
+
+        function disconnectWallet() {
+            currentAccount = null;
+            localStorage.setItem("metamask_connected", "false");
+            handleAccountDisconnected();
+            updateStatus("MetaMask disconnected. Refreshing will NOT reconnect automatically.", "info");
         }
 
         function handleAccountConnected(account) {
             currentAccount = account;
+            localStorage.setItem("metamask_connected", "true");
             const shortAcc = account.substring(0, 6) + "..." + account.substring(account.length - 4);
             const btn = document.getElementById("connectWalletBtn");
-            btn.innerHTML = "<span>🟢 " + shortAcc + "</span>";
+            btn.innerHTML = "<span>🟢 " + shortAcc + " (Switch)</span>";
             btn.classList.add("connected");
-            updateStatus("Wallet connected: " + shortAcc, "success");
+            btn.title = "Click to switch MetaMask account";
+
+            const disBtn = document.getElementById("disconnectWalletBtn");
+            if (disBtn) disBtn.style.display = "inline-block";
+
+            updateStatus("MetaMask connected: " + shortAcc, "success");
         }
 
         function handleAccountDisconnected() {
             currentAccount = null;
+            localStorage.setItem("metamask_connected", "false");
             const btn = document.getElementById("connectWalletBtn");
-            btn.innerHTML = "<span>🦊 Connect Wallet</span>";
+            btn.innerHTML = "<span>🦊 Connect MetaMask</span>";
             btn.classList.remove("connected");
-            updateStatus("Wallet disconnected", "info");
+            btn.title = "Click to connect MetaMask";
+
+            const disBtn = document.getElementById("disconnectWalletBtn");
+            if (disBtn) disBtn.style.display = "none";
         }
 
         async function updateNetwork() {
@@ -224,6 +301,14 @@
         async function sendCoffee() {
             const sendBtn = document.getElementById("sendBtn");
             try {
+                const provider = getMetaMaskProvider();
+                if (!provider) {
+                    alert("未检测到 MetaMask 插件！请确认已安装并启用 MetaMask 浏览器扩展。");
+                    updateStatus("MetaMask not detected.", "error");
+                    return;
+                }
+                web3 = new Web3(provider);
+
                 if (!currentAccount) {
                     updateStatus("Please connect your MetaMask wallet first!", "error");
                     await connectWallet();
